@@ -1,5 +1,5 @@
 import { secsOf, mySecs } from '../core.js';
-import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip } from '../core.js';
+import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip, armDelete } from '../core.js';
 import { shortageOf, pieceShortage, divisiOf, parentChoices, divisiMovePlan, deleteCounts, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES, parseNeeded, matchPart, partNameFromFile } from '../logic.js';
 import { seatSvg } from './seating.js';
 
@@ -256,6 +256,7 @@ route('/pieces/:id', async ({ id }) => {
   const pc = pieces[0];
   if (!pc) return empty('找不到這首曲目', '可能已刪除，或你沒有參與這首曲目。', '<a class="btn" href="#/pieces">回曲目</a>');
   const pts = parts.filter((x) => x.piece_id === id);
+  const nAsg = asg.filter((a) => pts.some((x) => x.id === a.part_id)).length;  // 這首目前排了幾筆人
   const [{ data: scores }, { data: chart }] = await Promise.all([
     sb.from('scores').select('*').eq('piece_id', id).order('created_at'),
     sb.from('seating_charts').select('*').eq('piece_id', id).maybeSingle(),
@@ -269,6 +270,12 @@ route('/pieces/:id', async ({ id }) => {
   const mine = new Set(asg.filter((a) => a.user_id === me()).map((a) => a.part_id));
   setTimeout(() => {
     $('#edit-piece')?.addEventListener('click', () => editPiece(pc));
+    // 清空這首曲子的編制（只刪排人，聲部、樂譜、座位表留著）：按兩下才執行
+    $('#clear-asg')?.addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      if (!armDelete(b, `確定清空 ${nAsg} 人？`)) return;
+      if (await run(() => sb.from('part_assignments').delete().in('part_id', pts.map((x) => x.id)), '已清空編制')) render();
+    });
     const cx = { pieceId: id, pts, asg, scores: scores || [] };
     $('#add-part')?.addEventListener('click', () => editPart(cx, null, Math.max(0, ...pts.map((x) => x.sort ?? 0)) + 1));
     $('#import-parts')?.addEventListener('click', () => importParts(pc, pts));
@@ -306,7 +313,7 @@ route('/pieces/:id', async ({ id }) => {
   const full = (scores || []).filter((s) => !s.part_id && !s.section);
   const secs = SECTIONS.filter((x) => (scores || []).some((s) => s.section === x)); // 舊的分組樂譜，有才顯示
   return `<a class="back" href="#/pieces">← 曲目</a>` +
-    pageHead(pc.title, `${esc(pc.composer || '')}${pc.duration_min ? ` · <span class="mono">${pc.duration_min} 分鐘</span>` : ''}`, p.officer ? '<button class="btn" id="edit-piece">編輯曲目</button>' : '') +
+    pageHead(pc.title, `${esc(pc.composer || '')}${pc.duration_min ? ` · <span class="mono">${pc.duration_min} 分鐘</span>` : ''}`, p.officer ? `${nAsg ? `<button class="btn ghost" id="clear-asg" title="把這首曲子所有聲部的排人清掉，聲部和樂譜會留著">清空編制</button>` : ''}<button class="btn" id="edit-piece">編輯曲目</button>` : '') +
     (pc.notes ? `<p class="note">${esc(pc.notes)}</p>` : '') +
     ((p.officer || full.length || secs.length) ? `<section class="card"><div class="card-head"><h2>樂譜</h2>${p.officer ? '<span class="actions"><button class="btn sm" id="up-full">上傳總譜</button><button class="btn sm pri" id="batch-up">批次上傳</button></span>' : ''}</div>
       ${p.officer ? `<p class="small muted">用 Ling Ling Suite 拆好的分譜和總譜可以整包丟進「批次上傳」，網站會依檔名對到下面的聲部。${pc.ensemble === 'sizhu' ? '這是絲竹曲目，總譜只有排進這首曲子的人看得到。' : '這是大團曲目，總譜只有組長和聲部長看得到。'}</p>` : ''}
