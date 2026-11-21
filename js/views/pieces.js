@@ -229,7 +229,7 @@ route('/pieces', async () => {
   const { pieces, parts, asg } = await loadAll();
   const showArch = sessionStorage.getItem('arch') === '1';
   const mineParts = new Set(asg.filter((a) => a.user_id === me()).map((a) => a.part_id));
-  const myPieces = pieces.filter((pc) => parts.some((pt) => pt.piece_id === pc.id && mineParts.has(pt.id)));
+  const myPieces = pieces.filter((pc) => (showArch || !pc.archived) && parts.some((pt) => pt.piece_id === pc.id && mineParts.has(pt.id)));
   const list = pieces.filter((pc) => showArch || !pc.archived);
   const card = (pc) => {
     const pts = parts.filter((x) => x.piece_id === pc.id);
