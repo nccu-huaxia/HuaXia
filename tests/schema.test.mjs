@@ -935,3 +935,24 @@ test('指導老師：看得到全團出席、請假、點名、槍手、各組�
   // 社員還是看不到別組公告
   assert.ok(!(await as(B, `select title from announcements`)).rows.some((r) => r.title === '吹管組公告'));
 });
+
+test('組別公告：該組社員看得到；槍手排到該組的聲部時也看得到，別組的、封存曲目的不算', async () => {
+  const G = '00000000-0000-0000-0000-0000000000f1', RG = '44444444-4444-4444-4444-4444444444f1';
+  const PX = '22222222-2222-2222-2222-2222222222f1', PTX = '33333333-3333-3333-3333-3333333333f1';
+  await db.exec(`insert into auth.users values ('${G}','g@x','{"name":"外校乙"}')`);
+  await as(A, `update profiles set status='active' where id='${G}'; insert into user_roles values ('${G}','ringer');
+    insert into ringers (id,name,status,user_id) values ('${RG}','外校乙','accepted','${G}');
+    insert into pieces (id,title) values ('${PX}','槍手測試曲');
+    insert into piece_parts (id,piece_id,name,needed_min,section) values ('${PTX}','${PX}','大鑼',1,'打擊');
+    insert into part_assignments (part_id,ringer_id) values ('${PTX}','${RG}');
+    insert into announcements (channel,title,audience,section) values
+      ('tutti','打擊組公告-槍手','section','打擊'),('tutti','吹管組公告-槍手','section','吹管'),('tutti','拉弦組公告-社員','section','拉弦')`);
+  const sees = async (uid, title) => (await as(uid, `select 1 from announcements where title='${title}'`)).rows.length === 1;
+  assert.equal(await sees(B, '拉弦組公告-社員'), true);    // 一般社員看得到自己那組
+  assert.equal(await sees(B, '打擊組公告-槍手'), false);   // 別組的看不到
+  assert.equal(await sees(G, '打擊組公告-槍手'), true);    // 槍手排在打擊的聲部
+  assert.equal(await sees(G, '吹管組公告-槍手'), false);   // 沒排到吹管
+  assert.equal(await sees(G, '拉弦組公告-社員'), false);
+  await as(A, `update pieces set archived=true where id='${PX}'`);
+  assert.equal(await sees(G, '打擊組公告-槍手'), false);   // 曲目封存後就不算
+});

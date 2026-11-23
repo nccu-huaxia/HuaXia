@@ -605,6 +605,13 @@ language sql stable security definer set search_path = public as $$
   select exists (select 1 from part_assignments pa left join ringers r on r.id = pa.ringer_id
     where pa.part_id = part and (pa.user_id = auth.uid() or r.user_id = auth.uid()))
 $$;
+-- 排在某一組的聲部（槍手沒有組別，靠這個算進組別公告）；封存的曲目不算
+create or replace function public.plays_in_section(sec text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from part_assignments pa join piece_parts pp on pp.id = pa.part_id
+    join pieces pc on pc.id = pp.piece_id left join ringers r on r.id = pa.ringer_id
+    where pp.section = sec and not pc.archived and (pa.user_id = auth.uid() or r.user_id = auth.uid()))
+$$;
 create or replace function public.teaches_class(cid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from classes where id = cid and auth.uid() = any(teacher_ids))
@@ -1097,7 +1104,8 @@ create policy ann_read on public.announcements for select using (
   public.is_officer() or case audience
     when 'all' then public.is_active()
     when 'insiders' then public.is_insider()
-    when 'section' then public.is_insider() and (section = any(public.my_sections()) or public.has_role('teacher'))  -- 老師看得到每一組
+    when 'section' then (public.is_insider() and (section = any(public.my_sections()) or public.has_role('teacher')))  -- 老師看得到每一組
+      or (public.is_active() and public.plays_in_section(section))  -- 槍手：排到這一組的聲部
     when 'newbies' then public.has_role('newbie')
     when 'ringers' then public.has_role('ringer')
     when 'sizhu' then public.is_insider()
